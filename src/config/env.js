@@ -1,0 +1,50 @@
+const path = require('node:path');
+const dotenv = require('dotenv');
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
+
+function invalid(name, reason) {
+  const error = new Error(`Invalid configuration: ${name} ${reason}.`);
+  error.code = 'ENV_CONFIG';
+  throw error;
+}
+
+function required(name) {
+  const value = process.env[name]?.trim();
+  if (!value) invalid(name, 'is required');
+  return value;
+}
+
+function parseUrl(name, value) {
+  try {
+    return new URL(value);
+  } catch {
+    invalid(name, 'must be a valid URL');
+  }
+}
+
+const NODE_ENV = required('NODE_ENV');
+if (!['development', 'test', 'production'].includes(NODE_ENV)) {
+  invalid('NODE_ENV', 'must be development, test, or production');
+}
+
+const port = required('PORT');
+const PORT = Number(port);
+if (!/^\d+$/.test(port) || !Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  invalid('PORT', 'must be an integer between 1 and 65535');
+}
+
+const DATABASE_URL = required('DATABASE_URL');
+const databaseUrl = parseUrl('DATABASE_URL', DATABASE_URL);
+if (!['postgres:', 'postgresql:'].includes(databaseUrl.protocol) ||
+    !databaseUrl.hostname || !databaseUrl.username || databaseUrl.pathname.length < 2) {
+  invalid('DATABASE_URL', 'must be a PostgreSQL connection URL with a host, user, and database');
+}
+
+const clientUrl = parseUrl('CLIENT_URL', required('CLIENT_URL'));
+if (!['http:', 'https:'].includes(clientUrl.protocol) || clientUrl.username ||
+    clientUrl.password || clientUrl.pathname !== '/' || clientUrl.search || clientUrl.hash) {
+  invalid('CLIENT_URL', 'must be an HTTP or HTTPS origin without credentials, a path, query, or fragment');
+}
+
+module.exports = Object.freeze({ NODE_ENV, PORT, DATABASE_URL, CLIENT_URL: clientUrl.origin });
