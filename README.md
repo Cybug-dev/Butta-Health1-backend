@@ -1,7 +1,7 @@
 # Butta Health backend
 
-A small TypeScript + Node.js ESM Express REST API foundation for Butta Health. The only endpoint
-is a public liveness check. Authentication and health data models are not implemented.
+A TypeScript + Node.js ESM Express API with native email/password authentication
+and a public liveness check. Google OAuth and health features are not implemented.
 
 ## Prerequisites
 
@@ -23,7 +23,11 @@ the existing Neon project's Connect dialog. Use `sslmode=verify-full` to explici
 verify the server certificate and hostname; retain other connection parameters.
 Keep `NODE_ENV=development`, `PORT=5000`, and
 `CLIENT_URL=http://localhost:5173` unless your local setup differs. `CLIENT_URL`
-must be a single HTTP(S) origin. All four values are validated at startup.
+must be a single HTTP(S) origin. Set `JWT_SECRET` to a cryptographically random
+32-byte key encoded as 64 hexadecimal characters and `JWT_EXPIRES_IN_SECONDS=3600`.
+The allowed lifetime is 60–86400 seconds. Bootstrap has already generated a local
+key in ignored `.env`; use a different secret for each environment.
+All required values are validated at startup without printing secrets.
 Existing process environment variables take precedence over `.env`.
 
 Never share or commit `.env`. `.env.example` intentionally leaves the database
@@ -42,6 +46,7 @@ node --version
 ```powershell
 npm run prisma:validate
 npm run prisma:generate
+npm run prisma:migrate
 npm run typecheck
 npm run db:check
 npm test
@@ -75,22 +80,69 @@ The HTTP 200 response is:
 
 Failures use `{ "success": false, "error": { "code": "...", "message": "..." } }`.
 Unknown routes return 404; error responses never include raw exceptions or input.
-CORS allows the configured client origin with credentials enabled for future use.
+CORS allows the configured client origin with credentials enabled.
 The health endpoint does not query the database.
 
-`npm test` runs bootstrap-only checks using synthetic configuration and no database.
+`npm test` runs bootstrap and auth integration checks. `npm run test:bootstrap`
+runs the database-free checks alone. `npm run test:auth` runs integration tests.
+Set `TEST_DATABASE_URL` in ignored `.env` to a separate disposable Neon branch;
+`auth-foundation-test` was created for this purpose. The integration suite rejects
+the application database, applies Prisma migrations to the test database, and
+removes only its own randomly named fixtures afterward. Never point it at real data.
 `npm run db:check` separately runs a read-only `SELECT 1` through Prisma against
-the configured database. Neither command changes database tables.
+the configured application database.
+
+## Authentication
+
+Send JSON bodies and use `credentials: 'include'` in browser fetch requests:
+
+- `POST /api/auth/register`: `firstName`, `lastName`, `email`, `password`; returns 201.
+- `POST /api/auth/login`: `email`, `password`; returns 200.
+- `GET /api/auth/me`: returns the current user or 401.
+- `POST /api/auth/logout`: no body required; returns 200 and expires the auth cookie.
+
+Register, login and me return `{ "success": true, "data": { "user": ... } }`.
+The user contains only `id`, `email`, `firstName`, `lastName`, `createdAt`, and
+`updatedAt`. Tokens and credential records are never returned in JSON.
+
+Names are trimmed (1–100 characters), emails are trimmed/lowercased, and passwords
+are preserved exactly (15–128 characters for registration). Unknown fields and
+malformed payloads are rejected. Passwords use Argon2id with 19 MiB memory,
+two iterations, one lane and unique random salts, following the
+[OWASP password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
+Wrong passwords and unknown emails share the same 401 response and both perform
+Argon2 verification. Duplicate registration returns a generic 409 conflict;
+the differing registration status still permits some account enumeration.
+
+JWTs use HS256 with verified issuer/audience, subject UUID and required issued-at/
+expiry claims. Identity claims contain only the user ID, never email or health data.
+The HTTP-only, host-only cookie uses `SameSite=Lax`, `Path=/`, and a lifetime matching
+the JWT. It is named `butta_auth` locally and `__Host-butta_auth` with `Secure` in
+production. Production requires HTTPS and a same-site client/API arrangement.
+Browser auth writes must originate from `CLIENT_URL`; JSON-only credential submissions and
+SameSite cookies provide additional CSRF protection. Auth responses use `no-store`.
+
+Registration permits 5 attempts per IP per 15 minutes; login permits 10. Limits
+are in memory for this single-process foundation. Proxy trust remains disabled;
+configure the known proxy topology and a shared limiter store before scaling out.
+
+Logout clears the browser cookie. A copied JWT remains valid until expiry;
+server-side revocation, refresh tokens, password reset and email verification
+are outside this boundary. No tokens are stored in localStorage or accepted from
+Authorization headers.
 
 ## Prisma and layout
 
 - `src/app.ts`: middleware, routes, 404 and final error handling.
 - `src/server.ts`: validated startup and bounded graceful shutdown.
 - `src/routes/health.routes.ts`: liveness endpoint.
-- `prisma/schema.prisma`: PostgreSQL datasource and generator, with no models.
+- `prisma/schema.prisma`: User/AuthAccount models and ESM client generator.
 - `prisma.config.ts`: Prisma 7 configuration, using the central environment module.
 - `src/scripts/check-db.ts`: separate Prisma connectivity verification.
 - `test/bootstrap.test.ts`: HTTP and startup verification.
+- `src/auth/`, `src/controllers/`, `src/middleware/`, `src/schemas/`, `src/services/`:
+  token/cookie/password handling, typed authentication, validation and auth operations.
+- `test/auth.test.ts`: integration and security checks on the isolated database.
 
 Prisma CLI and Client are pinned to matching stable versions. The current
 `prisma-client` generator uses `moduleFormat = "esm"` and writes TypeScript to
@@ -110,9 +162,20 @@ configuration does not use. Revisit these overrides when upgrading Prisma;
 rerun validation, generation, and the connectivity check. MySQL is a transitive
 CLI dependency, not an application database.
 
-Prisma 7.10 supports generation without models by default. No migration or schema
-push is needed. The first migration belongs
-to the approved core-model feature.
+`npm run prisma:migrate` applies checked-in migrations. Prisma CLI configuration
+uses the direct Neon endpoint while application queries retain connection pooling.
+The first migration creates only `User` and `AuthAccount`, with UUID IDs and UTC
+timestamps. Unique indexes enforce normalized email, one provider account per
+user, and globally unique provider identities. The user/provider composite index
+also supports user relation lookups; there is no redundant userId index.
+
+Migration CHECK constraints enforce normalized email and provider credential
+shape: LOCAL requires an Argon2id hash and no provider account ID; GOOGLE requires
+a provider account ID and no password hash. These CHECK constraints are maintained
+in migration SQL because Prisma does not model them. Registration uses one nested
+transaction for both rows, and deleting a user cascades to its auth accounts.
+The GOOGLE enum value reserves the schema for future linking; no OAuth flow or
+automatic email-based account linking is implemented.
 
 ## Git
 
@@ -121,4 +184,4 @@ The private repository is [Cybug-dev/butta-health-backend](https://github.com/Cy
 connected locally as `origin`.
 Review the files and `git status` before explicitly approving a commit.
 
-Next boundary after approval: **Core User/Auth data model + native email/password authentication.**
+No further product features are included in this change.

@@ -4,7 +4,8 @@ import dotenv from 'dotenv';
 // This resolves to the project root from both src/config and dist/config.
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: true });
 
-type VariableName = 'NODE_ENV' | 'PORT' | 'DATABASE_URL' | 'CLIENT_URL';
+type VariableName = 'NODE_ENV' | 'PORT' | 'DATABASE_URL' | 'CLIENT_URL'
+  | 'JWT_SECRET' | 'JWT_EXPIRES_IN_SECONDS';
 
 function invalid(name: VariableName, reason: string): never {
   throw Object.assign(new Error(`Invalid configuration: ${name} ${reason}.`), {
@@ -50,6 +51,21 @@ if (!['http:', 'https:'].includes(clientUrl.protocol) || clientUrl.username ||
   invalid('CLIENT_URL', 'must be an HTTP or HTTPS origin without credentials, a path, query, or fragment');
 }
 
-const env = Object.freeze({ NODE_ENV, PORT, DATABASE_URL, CLIENT_URL: clientUrl.origin });
+const JWT_SECRET = required('JWT_SECRET');
+if (!/^[a-fA-F0-9]{64}$/.test(JWT_SECRET)) {
+  invalid('JWT_SECRET', 'must be a randomly generated 32-byte key encoded as 64 hexadecimal characters');
+}
+
+const lifetime = required('JWT_EXPIRES_IN_SECONDS');
+const JWT_EXPIRES_IN_SECONDS = Number(lifetime);
+if (!/^\d+$/.test(lifetime) || !Number.isInteger(JWT_EXPIRES_IN_SECONDS)
+    || JWT_EXPIRES_IN_SECONDS < 60 || JWT_EXPIRES_IN_SECONDS > 86400) {
+  invalid('JWT_EXPIRES_IN_SECONDS', 'must be an integer between 60 and 86400');
+}
+
+const env = Object.freeze({
+  NODE_ENV, PORT, DATABASE_URL, CLIENT_URL: clientUrl.origin,
+  JWT_SECRET, JWT_EXPIRES_IN_SECONDS,
+});
 
 export default env;

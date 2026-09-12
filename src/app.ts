@@ -3,6 +3,9 @@ import helmet from 'helmet';
 import cors from 'cors';
 import env from './config/env.js';
 import healthRoutes from './routes/health.routes.js';
+import authRoutes from './routes/auth.routes.js';
+import { authRequestSecurity } from './middleware/auth-security.middleware.js';
+import { AuthError } from './auth/errors.js';
 
 const app = express();
 
@@ -14,9 +17,11 @@ app.use(cors({
   },
   credentials: true,
 }));
+app.use('/api/auth', authRequestSecurity);
 app.use(express.json({ limit: '100kb' }));
 
 app.use('/api/health', healthRoutes);
+app.use('/api/auth', authRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -35,7 +40,11 @@ const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, next) => {
   const errorType = typeof error === 'object' && error !== null && 'type' in error
     && typeof error.type === 'string' ? error.type : undefined;
 
-  if (errorType === 'entity.parse.failed') {
+  if (error instanceof AuthError) {
+    status = error.status;
+    code = error.code;
+    message = error.message;
+  } else if (errorType === 'entity.parse.failed') {
     status = 400;
     code = 'INVALID_JSON';
     message = 'Request body must contain valid JSON.';

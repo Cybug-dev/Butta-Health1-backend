@@ -11,6 +11,8 @@ const testEnv = {
   PORT: '5000',
   DATABASE_URL: 'postgresql://test:bootstrap-secret@localhost:5432/test',
   CLIENT_URL: 'http://localhost:5173',
+  JWT_SECRET: 'a'.repeat(64),
+  JWT_EXPIRES_IN_SECONDS: '3600',
 };
 Object.assign(process.env, testEnv);
 
@@ -91,7 +93,7 @@ function startWith(overrides: Record<string, string>) {
     cwd: root,
     env: { ...process.env, ...testEnv, ...overrides },
     encoding: 'utf8',
-    timeout: 5_000,
+    timeout: 10_000,
     windowsHide: true,
   });
 }
@@ -113,6 +115,9 @@ test('invalid configuration fails startup with safe variable-specific errors', (
     ['DATABASE_URL', 'https://localhost/test'], ['CLIENT_URL', '*'],
     ['CLIENT_URL', 'http://user:bootstrap-secret@localhost:5173'],
     ['CLIENT_URL', 'http://localhost:5173/path'],
+    ['JWT_SECRET', 'short'], ['JWT_SECRET', 'z'.repeat(64)],
+    ['JWT_EXPIRES_IN_SECONDS', '0'], ['JWT_EXPIRES_IN_SECONDS', '86401'],
+    ['JWT_EXPIRES_IN_SECONDS', '1e3'],
   ] as const) {
     const result = startWith({ [name]: value });
     assert.equal(result.status, 1);

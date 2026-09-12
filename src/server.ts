@@ -2,6 +2,7 @@ async function start() {
   // Dynamic imports let startup report configuration errors without a stack trace.
   const { default: env } = await import('./config/env.js');
   const { default: app } = await import('./app.js');
+  const { prisma } = await import('./config/database.js');
   const server = app.listen(env.PORT, () => {
     console.log(`Butta Health API listening on port ${env.PORT}.`);
   });
@@ -25,8 +26,14 @@ async function start() {
       process.exit(1);
     }, 10_000);
     timeout.unref();
-    server.close((error) => {
-      clearTimeout(timeout);
+    server.close(async (error) => {
+      try {
+        await prisma.$disconnect();
+      } catch {
+        process.exitCode = 1;
+      } finally {
+        clearTimeout(timeout);
+      }
       if (error) process.exitCode = 1;
     });
   }
