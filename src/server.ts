@@ -1,11 +1,12 @@
-function start() {
-  const env = require('./config/env');
-  const app = require('./app');
+async function start() {
+  // Dynamic imports let startup report configuration errors without a stack trace.
+  const { default: env } = await import('./config/env.js');
+  const { default: app } = await import('./app.js');
   const server = app.listen(env.PORT, () => {
     console.log(`Butta Health API listening on port ${env.PORT}.`);
   });
 
-  server.on('error', (error) => {
+  server.on('error', (error: NodeJS.ErrnoException) => {
     const message = error.code === 'EADDRINUSE'
       ? 'PORT is already in use.'
       : error.code === 'EACCES'
@@ -35,8 +36,9 @@ function start() {
 }
 
 try {
-  start();
+  await start();
 } catch (error) {
-  console.error(error.code === 'ENV_CONFIG' ? error.message : 'Startup failed: unable to initialize application.');
+  console.error(error instanceof Error && 'code' in error && error.code === 'ENV_CONFIG'
+    ? error.message : 'Startup failed: unable to initialize application.');
   process.exitCode = 1;
 }

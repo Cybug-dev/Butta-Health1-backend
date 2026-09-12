@@ -1,6 +1,6 @@
 # Butta Health backend
 
-A small CommonJS Express REST API foundation for Butta Health. The only endpoint
+A small TypeScript + Node.js ESM Express REST API foundation for Butta Health. The only endpoint
 is a public liveness check. Authentication and health data models are not implemented.
 
 ## Prerequisites
@@ -27,7 +27,7 @@ must be a single HTTP(S) origin. All four values are validated at startup.
 Existing process environment variables take precedence over `.env`.
 
 Never share or commit `.env`. `.env.example` intentionally leaves the database
-value blank. Runtime configuration is centralized in `src/config/env.js`.
+value blank. Runtime configuration is centralized in `src/config/env.ts`.
 
 On the Windows machine used for bootstrap, a separate Node 24 runtime is installed
 without replacing the machine's existing Node installation. To use it in PowerShell:
@@ -42,12 +42,25 @@ node --version
 ```powershell
 npm run prisma:validate
 npm run prisma:generate
+npm run typecheck
 npm run db:check
 npm test
 npm run dev
 ```
 
-Use `npm start` to run without the development watcher. Open
+`npm run dev` runs TypeScript with the `tsx` watcher. For production execution:
+
+```powershell
+npm run build
+npm start
+```
+
+The build compiles `src/` into ignored `dist/` using strict TypeScript and
+NodeNext module resolution. `npm start` runs `dist/server.js` directly with Node.
+Relative imports use `.js` extensions so they resolve after compilation.
+`npm run typecheck` checks source, tests, and Prisma configuration without emitting files.
+
+Open
 `http://localhost:5000/api/health` or run:
 
 ```powershell
@@ -71,22 +84,22 @@ the configured database. Neither command changes database tables.
 
 ## Prisma and layout
 
-- `src/app.js`: middleware, routes, 404 and final error handling.
-- `src/server.js`: validated startup and bounded graceful shutdown.
-- `src/routes/health.routes.js`: liveness endpoint.
+- `src/app.ts`: middleware, routes, 404 and final error handling.
+- `src/server.ts`: validated startup and bounded graceful shutdown.
+- `src/routes/health.routes.ts`: liveness endpoint.
 - `prisma/schema.prisma`: PostgreSQL datasource and generator, with no models.
-- `prisma.config.js`: Prisma 7 configuration, using the central environment module.
-- `scripts/check-db.js`: separate Prisma connectivity verification.
-- `test/bootstrap.test.js`: HTTP and startup verification.
+- `prisma.config.ts`: Prisma 7 configuration, using the central environment module.
+- `src/scripts/check-db.ts`: separate Prisma connectivity verification.
+- `test/bootstrap.test.ts`: HTTP and startup verification.
 
 Prisma CLI and Client are pinned to matching stable versions. The current
-`prisma-client` generator uses `moduleFormat = "cjs"` and writes TypeScript to
-`src/generated/prisma-source/`. `npm run prisma:generate` also compiles that generated
-code into CommonJS JavaScript in `src/generated/prisma-runtime/`, using
-`tsconfig.prisma.json`. Both directories are ignored by Git. Application code
-uses `require('../src/generated/prisma-runtime/client')` from `scripts/`.
-TypeScript is a development-only build dependency; application source remains
-CommonJS JavaScript. The PostgreSQL adapter is required by Prisma 7.
+`prisma-client` generator uses `moduleFormat = "esm"` and writes TypeScript to
+ignored `src/generated/prisma/`. Run `npm run prisma:generate` after installation
+or schema changes, before typechecking or building. The client compiles alongside
+the application into `dist/generated/prisma/`; no separate Prisma compilation step
+is needed. `npm run db:check` uses the source client through `tsx`. After a build,
+`node dist/scripts/check-db.js` verifies the compiled ESM client with the same
+read-only query. The PostgreSQL adapter is required by Prisma 7.
 
 Two scoped dependency overrides pin patched versions of Prisma CLI dependencies:
 `deepmerge-ts` 8.0.2 and `mysql2` 3.24.4. They address upstream
@@ -103,9 +116,9 @@ to the approved core-model feature.
 
 ## Git
 
-The primary branch is `main`. Bootstrap creates no commit and performs no push.
+The primary branch is `main`.
 The private repository is [Cybug-dev/butta-health-backend](https://github.com/Cybug-dev/butta-health-backend),
 connected locally as `origin`.
-Review the files and `git status` before explicitly approving a first commit.
+Review the files and `git status` before explicitly approving a commit.
 
-Next boundary: **Core database model design + native email/password authentication foundation.**
+Next boundary after approval: **Core User/Auth data model + native email/password authentication.**

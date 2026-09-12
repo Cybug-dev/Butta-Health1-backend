@@ -1,8 +1,9 @@
-const assert = require('node:assert/strict');
-const { once } = require('node:events');
-const path = require('node:path');
-const { spawnSync } = require('node:child_process');
-const { before, after, test } = require('node:test');
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { before, after, test } from 'node:test';
+import type { Server } from 'node:http';
 
 // Synthetic configuration keeps these HTTP checks independent of Neon access.
 const testEnv = {
@@ -13,15 +14,21 @@ const testEnv = {
 };
 Object.assign(process.env, testEnv);
 
-const app = require('../src/app');
-const root = path.resolve(__dirname, '..');
-let server;
-let baseUrl;
+const { default: app } = await import('../src/app.js');
+const root = path.resolve(import.meta.dirname, '..');
+let server: Server;
+let baseUrl: string;
+
+function serverPort() {
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  return address.port;
+}
 
 before(async () => {
   server = app.listen(0);
   await once(server, 'listening');
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  baseUrl = `http://127.0.0.1:${serverPort()}`;
 });
 
 after(async () => {
@@ -65,24 +72,22 @@ test('CORS permits only the configured origin, including credentialed preflight'
 });
 
 test('invalid JSON and oversized bodies produce safe client errors', async () => {
-  for (const [body, status, code] of [
-    ['{"private-health-input":', 400, 'INVALID_JSON'],
-    [JSON.stringify({ value: 'a'.repeat(103_000) }), 413, 'PAYLOAD_TOO_LARGE'],
-  ]) {
+  for (const [body, status, code, message] of [
+    ['{"private-health-input":', 400, 'INVALID_JSON', 'Request body must contain valid JSON.'],
+    [JSON.stringify({ value: 'a'.repeat(103_000) }), 413, 'PAYLOAD_TOO_LARGE', 'Request body is too large.'],
+  ] as const) {
     const response = await fetch(`${baseUrl}/api/health`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
     });
     assert.equal(response.status, status);
     const result = await response.json();
-    assert.equal(result.success, false);
-    assert.equal(result.error.code, code);
-    assert.deepEqual(Object.keys(result.error).sort(), ['code', 'message']);
+    assert.deepEqual(result, { success: false, error: { code, message } });
     assert.ok(!JSON.stringify(result).includes('private-health-input'));
   }
 });
 
-function startWith(overrides) {
-  return spawnSync(process.execPath, ['src/server.js'], {
+function startWith(overrides: Record<string, string>) {
+  return spawnSync(process.execPath, ['--import', 'tsx', 'src/server.ts'], {
     cwd: root,
     env: { ...process.env, ...testEnv, ...overrides },
     encoding: 'utf8',
@@ -108,7 +113,7 @@ test('invalid configuration fails startup with safe variable-specific errors', (
     ['DATABASE_URL', 'https://localhost/test'], ['CLIENT_URL', '*'],
     ['CLIENT_URL', 'http://user:bootstrap-secret@localhost:5173'],
     ['CLIENT_URL', 'http://localhost:5173/path'],
-  ]) {
+  ] as const) {
     const result = startWith({ [name]: value });
     assert.equal(result.status, 1);
     assert.ok(result.stderr.includes(`Invalid configuration: ${name}`));
@@ -117,7 +122,7 @@ test('invalid configuration fails startup with safe variable-specific errors', (
 });
 
 test('an occupied port fails startup cleanly', () => {
-  const result = startWith({ PORT: String(server.address().port) });
+  const result = startWith({ PORT: String(serverPort()) });
   assert.equal(result.status, 1);
   assert.ok(result.stderr.includes('PORT is already in use'));
   assert.ok(!result.stderr.includes('bootstrap-secret'));

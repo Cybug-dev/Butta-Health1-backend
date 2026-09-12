@@ -1,8 +1,8 @@
-const express = require('express');
-const helmet = require('helmet');
-const cors = require('cors');
-const env = require('./config/env');
-const healthRoutes = require('./routes/health.routes');
+import express, { type ErrorRequestHandler } from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import env from './config/env.js';
+import healthRoutes from './routes/health.routes.js';
 
 const app = express();
 
@@ -25,22 +25,25 @@ app.use((_req, res) => {
   });
 });
 
-app.use((error, _req, res, next) => {
+const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, next) => {
   if (res.headersSent) return next(error);
 
   let status = 500;
   let code = 'INTERNAL_SERVER_ERROR';
   let message = 'An unexpected error occurred.';
 
-  if (error.type === 'entity.parse.failed') {
+  const errorType = typeof error === 'object' && error !== null && 'type' in error
+    && typeof error.type === 'string' ? error.type : undefined;
+
+  if (errorType === 'entity.parse.failed') {
     status = 400;
     code = 'INVALID_JSON';
     message = 'Request body must contain valid JSON.';
-  } else if (error.type === 'entity.too.large') {
+  } else if (errorType === 'entity.too.large') {
     status = 413;
     code = 'PAYLOAD_TOO_LARGE';
     message = 'Request body is too large.';
-  } else if (['encoding.unsupported', 'charset.unsupported'].includes(error.type)) {
+  } else if (errorType === 'encoding.unsupported' || errorType === 'charset.unsupported') {
     status = 415;
     code = 'UNSUPPORTED_ENCODING';
     message = 'Request body encoding is not supported.';
@@ -48,6 +51,8 @@ app.use((error, _req, res, next) => {
 
   if (status === 500) console.error('Request failed: INTERNAL_SERVER_ERROR.');
   res.status(status).json({ success: false, error: { code, message } });
-});
+};
 
-module.exports = app;
+app.use(errorHandler);
+
+export default app;

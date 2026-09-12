@@ -1,21 +1,24 @@
-const path = require('node:path');
-const dotenv = require('dotenv');
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
+// This resolves to the project root from both src/config and dist/config.
+dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: true });
 
-function invalid(name, reason) {
-  const error = new Error(`Invalid configuration: ${name} ${reason}.`);
-  error.code = 'ENV_CONFIG';
-  throw error;
+type VariableName = 'NODE_ENV' | 'PORT' | 'DATABASE_URL' | 'CLIENT_URL';
+
+function invalid(name: VariableName, reason: string): never {
+  throw Object.assign(new Error(`Invalid configuration: ${name} ${reason}.`), {
+    code: 'ENV_CONFIG',
+  });
 }
 
-function required(name) {
+function required(name: VariableName): string {
   const value = process.env[name]?.trim();
   if (!value) invalid(name, 'is required');
   return value;
 }
 
-function parseUrl(name, value) {
+function parseUrl(name: VariableName, value: string): URL {
   try {
     return new URL(value);
   } catch {
@@ -24,7 +27,7 @@ function parseUrl(name, value) {
 }
 
 const NODE_ENV = required('NODE_ENV');
-if (!['development', 'test', 'production'].includes(NODE_ENV)) {
+if (NODE_ENV !== 'development' && NODE_ENV !== 'test' && NODE_ENV !== 'production') {
   invalid('NODE_ENV', 'must be development, test, or production');
 }
 
@@ -47,4 +50,6 @@ if (!['http:', 'https:'].includes(clientUrl.protocol) || clientUrl.username ||
   invalid('CLIENT_URL', 'must be an HTTP or HTTPS origin without credentials, a path, query, or fragment');
 }
 
-module.exports = Object.freeze({ NODE_ENV, PORT, DATABASE_URL, CLIENT_URL: clientUrl.origin });
+const env = Object.freeze({ NODE_ENV, PORT, DATABASE_URL, CLIENT_URL: clientUrl.origin });
+
+export default env;
