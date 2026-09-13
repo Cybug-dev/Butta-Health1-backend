@@ -16,6 +16,7 @@
     "test": "node --import tsx --test test/*.test.ts",
     "test:bootstrap": "node --import tsx --test test/bootstrap.test.ts",
     "test:auth": "node --import tsx --test test/auth.test.ts",
+    "test:profile": "node --import tsx --test test/health-profile.test.ts",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",

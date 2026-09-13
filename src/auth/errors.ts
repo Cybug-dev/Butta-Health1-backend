@@ -1,8 +1,6 @@
-export class AuthError extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) {
-    super(message);
-  }
-}
+import { ApiError } from '../errors/api-error.js';
+
+export class AuthError extends ApiError {}
 
 export function unauthorized() {
   return new AuthError(401, 'UNAUTHORIZED', 'Authentication required.');
