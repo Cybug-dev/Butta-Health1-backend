@@ -4,8 +4,9 @@ import cors from 'cors';
 import env from './config/env.js';
 import healthRoutes from './routes/health.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import healthProfileRoutes from './routes/health-profile.routes.js';
 import { authRequestSecurity } from './middleware/auth-security.middleware.js';
-import { AuthError } from './auth/errors.js';
+import { ApiError } from './errors/api-error.js';
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use(express.json({ limit: '100kb' }));
 
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/health-profile', healthProfileRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -40,7 +42,7 @@ const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, next) => {
   const errorType = typeof error === 'object' && error !== null && 'type' in error
     && typeof error.type === 'string' ? error.type : undefined;
 
-  if (error instanceof AuthError) {
+  if (error instanceof ApiError) {
     status = error.status;
     code = error.code;
     message = error.message;

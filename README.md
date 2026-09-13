@@ -1,7 +1,8 @@
 # Butta Health backend
 
-A TypeScript + Node.js ESM Express API with native email/password authentication
-and a public liveness check. Google OAuth and health features are not implemented.
+A TypeScript + Node.js ESM Express API with native email/password authentication,
+a private health profile, and a public liveness check. Google OAuth and health
+event history are not implemented.
 
 ## Prerequisites
 
@@ -83,8 +84,9 @@ Unknown routes return 404; error responses never include raw exceptions or input
 CORS allows the configured client origin with credentials enabled.
 The health endpoint does not query the database.
 
-`npm test` runs bootstrap and auth integration checks. `npm run test:bootstrap`
-runs the database-free checks alone. `npm run test:auth` runs integration tests.
+`npm test` runs bootstrap, auth, and health-profile integration checks.
+`npm run test:bootstrap` runs the database-free checks alone. `npm run test:auth`
+and `npm run test:profile` run their respective integration suites.
 Set `TEST_DATABASE_URL` in ignored `.env` to a separate disposable Neon branch;
 `auth-foundation-test` was created for this purpose. The integration suite rejects
 the application database, applies Prisma migrations to the test database, and
@@ -131,18 +133,35 @@ server-side revocation, refresh tokens, password reset and email verification
 are outside this boundary. No tokens are stored in localStorage or accepted from
 Authorization headers.
 
+## Health profile
+
+Both profile routes require the JWT cookie and derive the owner only from the
+authenticated request. Browser requests must use `credentials: 'include'`.
+
+- `GET /api/health-profile`: returns the current user's profile or a safe 404.
+- `PUT /api/health-profile`: creates or fully replaces the current user's profile.
+
+`PUT` requires JSON with `allergies`, `existingConditions`, and
+`currentMedications` arrays. It accepts nullable `dateOfBirth`, `sex`,
+`bloodGroup`, `emergencyContactName`, and `emergencyContactPhone`. Dates use
+`YYYY-MM-DD`; blood groups use `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, or
+`O-`. Unknown fields are rejected. List entries are trimmed, empty entries are
+rejected, and duplicates are removed while preserving order. Responses use
+`{ "success": true, "data": { "profile": ... } }` and `Cache-Control: no-store`.
+
 ## Prisma and layout
 
 - `src/app.ts`: middleware, routes, 404 and final error handling.
 - `src/server.ts`: validated startup and bounded graceful shutdown.
 - `src/routes/health.routes.ts`: liveness endpoint.
-- `prisma/schema.prisma`: User/AuthAccount models and ESM client generator.
+- `prisma/schema.prisma`: User/AuthAccount/HealthProfile models and ESM client generator.
 - `prisma.config.ts`: Prisma 7 configuration, using the central environment module.
 - `src/scripts/check-db.ts`: separate Prisma connectivity verification.
 - `test/bootstrap.test.ts`: HTTP and startup verification.
 - `src/auth/`, `src/controllers/`, `src/middleware/`, `src/schemas/`, `src/services/`:
   token/cookie/password handling, typed authentication, validation and auth operations.
 - `test/auth.test.ts`: integration and security checks on the isolated database.
+- `test/health-profile.test.ts`: profile validation, ownership, upsert, and privacy checks.
 
 Prisma CLI and Client are pinned to matching stable versions. The current
 `prisma-client` generator uses `moduleFormat = "esm"` and writes TypeScript to
@@ -176,6 +195,11 @@ in migration SQL because Prisma does not model them. Registration uses one neste
 transaction for both rows, and deleting a user cascades to its auth accounts.
 The GOOGLE enum value reserves the schema for future linking; no OAuth flow or
 automatic email-based account linking is implemented.
+
+The health-profile migration adds one optional profile per user. A unique
+`userId` enforces that ownership in the database, and deletion of a user cascades
+to the profile. Birth dates use PostgreSQL `DATE`; health lists use non-null text
+arrays; and the database also constrains stored blood-group values.
 
 ## Git
 
