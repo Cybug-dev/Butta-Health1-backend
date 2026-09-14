@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.routes.js';
 import healthProfileRoutes from './routes/health-profile.routes.js';
 import { authRequestSecurity } from './middleware/auth-security.middleware.js';
 import { ApiError } from './errors/api-error.js';
+import docsRoutes from './routes/docs.routes.js';
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use(express.json({ limit: '100kb' }));
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/health-profile', healthProfileRoutes);
+app.use('/api-docs', docsRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({

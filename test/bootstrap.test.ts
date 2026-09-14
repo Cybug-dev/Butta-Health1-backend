@@ -57,6 +57,35 @@ test('unknown routes return the agreed 404 error envelope', async () => {
   });
 });
 
+test('Swagger documentation and local assets are public with security headers intact', async () => {
+  const response = await fetch(`${baseUrl}/api-docs/`);
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.ok(html.includes('swagger-ui'));
+  assert.ok(response.headers.get('content-security-policy')?.includes("script-src 'self'"));
+  for (const asset of ['swagger-ui.css', 'swagger-ui-bundle.js', 'swagger-ui-init.js']) {
+    const assetResponse = await fetch(`${baseUrl}/api-docs/${asset}`);
+    assert.equal(assetResponse.status, 200);
+    assert.ok((await assetResponse.text()).length > 0);
+  }
+  const specResponse = await fetch(`${baseUrl}/api-docs/openapi.json`);
+  assert.equal(specResponse.status, 200);
+  const spec = await specResponse.json() as {
+    openapi: string;
+    paths: Record<string, Record<string, unknown>>;
+    components: { securitySchemes: { cookieAuth: { in: string; name: string } } };
+  };
+  assert.equal(spec.openapi, '3.0.3');
+  assert.deepEqual(Object.entries(spec.paths).flatMap(([route, methods]) =>
+    Object.keys(methods).map(method => `${method.toUpperCase()} ${route}`)).sort(), [
+    'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/login',
+    'POST /api/auth/logout', 'GET /api/auth/me', 'GET /api/health-profile', 'PUT /api/health-profile',
+  ].sort());
+  assert.deepEqual({ in: spec.components.securitySchemes.cookieAuth.in, name: spec.components.securitySchemes.cookieAuth.name },
+    { in: 'cookie', name: '__Host-butta_auth' });
+  assert.ok(!JSON.stringify(spec).includes(testEnv.JWT_SECRET));
+});
+
 test('CORS permits only the configured origin, including credentialed preflight', async () => {
   const allowed = await fetch(`${baseUrl}/api/health`, {
     method: 'OPTIONS',

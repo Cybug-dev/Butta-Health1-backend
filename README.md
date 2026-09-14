@@ -209,3 +209,16 @@ connected locally as `origin`.
 Review the files and `git status` before explicitly approving a commit.
 
 No further product features are included in this change.
+# API documentation
+
+Swagger UI is available at `/api-docs/` (locally, `http://localhost:5000/api-docs/`).
+Download the OpenAPI document from `/api-docs/openapi.json` and import it into Postman.
+The documentation covers all seven health, authentication, and health-profile operations,
+including validation, response envelopes, rate limits, and cookie authentication.
+
+Swagger is read-only: browser “Try it out” is disabled to retain the existing trusted-origin
+write protections. Use Postman with the deployed API host, register or log in, and retain
+the returned HTTP-only cookie for `/api/auth/me` and `/api/health-profile` requests.
+Do not paste cookies or JWTs into the documentation. No authentication secrets are published.
+
+After deploying this change, open `https://butta-health-backend.onrender.com/api-docs/`.
