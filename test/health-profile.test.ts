@@ -36,6 +36,10 @@ let base: string;
 let ownerCookie: string;
 let otherCookie: string;
 
+function ownedProfileCount() {
+  return prisma.healthProfile.count({ where: { user: { email: { in: ownedEmails } } } });
+}
+
 type ProfileResponse = {
   success: true;
   data: { profile: {
@@ -144,7 +148,7 @@ test('profile writes require the configured origin and JSON content', async () =
     method: 'PUT', headers: { Cookie: ownerCookie, Origin: 'http://localhost:5173' }, body: 'not-json',
   });
   assert.equal(noJson.status, 415);
-  assert.equal(await prisma.healthProfile.count(), 0);
+  assert.equal(await ownedProfileCount(), 0);
 });
 
 test('invalid or client-owned identity fields cannot create a profile', async () => {
@@ -162,7 +166,7 @@ test('invalid or client-owned identity fields cannot create a profile', async ()
       success: false, error: { code: 'VALIDATION_ERROR', message: 'Provide a valid health profile.' },
     });
   }
-  assert.equal(await prisma.healthProfile.count(), 0);
+  assert.equal(await ownedProfileCount(), 0);
 });
 
 test('a user can create and fetch one normalized health profile', async () => {
@@ -174,6 +178,10 @@ test('a user can create and fetch one normalized health profile', async () => {
   assert.equal(putBody.data.profile.dateOfBirth, '1995-08-17');
   assert.deepEqual(putBody.data.profile.allergies, ['Penicillin', 'Dust']);
   assert.equal('userId' in putBody.data.profile, false);
+  assert.deepEqual(Object.keys(putBody.data.profile).sort(), [
+    'id', 'dateOfBirth', 'sex', 'bloodGroup', 'allergies', 'existingConditions',
+    'currentMedications', 'emergencyContactName', 'emergencyContactPhone', 'createdAt', 'updatedAt',
+  ].sort());
 
   const get = await profileRequest('GET', ownerCookie);
   assert.equal(get.status, 200);
@@ -182,6 +190,7 @@ test('a user can create and fetch one normalized health profile', async () => {
 });
 
 test('PUT replaces the same profile instead of creating a duplicate', async () => {
+  const previous = await (await profileRequest('GET', ownerCookie)).json() as ProfileResponse;
   const replacement = {
     dateOfBirth: null,
     sex: null,
@@ -195,10 +204,11 @@ test('PUT replaces the same profile instead of creating a duplicate', async () =
   const response = await profileRequest('PUT', ownerCookie, replacement);
   assert.equal(response.status, 200);
   const body = await response.json() as ProfileResponse;
+  assert.equal(body.data.profile.id, previous.data.profile.id);
   assert.equal(body.data.profile.dateOfBirth, null);
   assert.equal(body.data.profile.sex, null);
   assert.deepEqual(body.data.profile.existingConditions, ['Hypertension']);
-  assert.equal(await prisma.healthProfile.count(), 1);
+  assert.equal(await ownedProfileCount(), 1);
 });
 
 test('each authenticated user is isolated to their own profile', async () => {
@@ -212,5 +222,27 @@ test('each authenticated user is isolated to their own profile', async () => {
   const other = await profileRequest('GET', otherCookie);
   assert.deepEqual(((await owner.json()) as ProfileResponse).data.profile.existingConditions, ['Hypertension']);
   assert.deepEqual(((await other.json()) as ProfileResponse).data.profile.allergies, ['Latex']);
-  assert.equal(await prisma.healthProfile.count(), 2);
+  assert.equal(await ownedProfileCount(), 2);
+});
+
+test('body and query identities cannot read or overwrite another user profile', async () => {
+  const otherUser = await prisma.user.findUniqueOrThrow({ where: { email: ownedEmails[1] } });
+  const beforeOther = await (await profileRequest('GET', otherCookie)).json();
+  const beforeOwner = await (await profileRequest('GET', ownerCookie)).json();
+  const queryUrl = `${base}/api/health-profile?userId=${otherUser.id}`;
+  const read = await fetch(queryUrl, { headers: { Cookie: ownerCookie } });
+  assert.equal(read.status, 200);
+  assert.deepEqual(await read.json(), beforeOwner);
+  const rejected = await profileRequest('PUT', ownerCookie, { ...completeProfile, userId: otherUser.id });
+  assert.equal(rejected.status, 400);
+  const write = await fetch(queryUrl, {
+    method: 'PUT',
+    headers: { Cookie: ownerCookie, 'Content-Type': 'application/json', Origin: 'http://localhost:5173' },
+    body: JSON.stringify({ ...completeProfile, allergies: ['Owner only'] }),
+  });
+  assert.equal(write.status, 200);
+  assert.deepEqual(await (await profileRequest('GET', otherCookie)).json(), beforeOther);
+  const owner = await (await profileRequest('GET', ownerCookie)).json() as ProfileResponse;
+  assert.deepEqual(owner.data.profile.allergies, ['Owner only']);
+  assert.equal(await ownedProfileCount(), 2);
 });
