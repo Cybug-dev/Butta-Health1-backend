@@ -80,6 +80,11 @@ test('Swagger documentation and local assets are public with security headers in
     Object.keys(methods).map(method => `${method.toUpperCase()} ${route}`)).sort(), [
     'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/login',
     'POST /api/auth/logout', 'GET /api/auth/me', 'GET /api/health-profile', 'PUT /api/health-profile',
+    'GET /api/health-events', 'POST /api/health-events', 'GET /api/health-events/{id}',
+    'PATCH /api/health-events/{id}', 'DELETE /api/health-events/{id}',
+    'GET /api/dashboard', 'GET /api/check-ins/today', 'GET /api/check-ins/history',
+    'POST /api/check-ins/{id}/respond', 'GET /api/notification-preferences',
+    'PUT /api/notification-preferences',
   ].sort());
   assert.deepEqual({ in: spec.components.securitySchemes.cookieAuth.in, name: spec.components.securitySchemes.cookieAuth.name },
     { in: 'cookie', name: '__Host-butta_auth' });

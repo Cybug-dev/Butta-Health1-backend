@@ -16,6 +16,7 @@ export async function registerUser(input: RegisterInput) {
       data: {
         email: input.email, firstName: input.firstName, lastName: input.lastName,
         authAccounts: { create: { provider: 'LOCAL', passwordHash } },
+        notificationPreference: { create: {} },
       },
       select: safeUserSelect,
     });

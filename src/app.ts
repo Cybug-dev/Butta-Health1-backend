@@ -5,6 +5,10 @@ import env from './config/env.js';
 import healthRoutes from './routes/health.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import healthProfileRoutes from './routes/health-profile.routes.js';
+import healthEventRoutes from './routes/health-event.routes.js';
+import dashboardRoutes from './routes/dashboard.routes.js';
+import checkInRoutes from './routes/check-in.routes.js';
+import notificationPreferenceRoutes from './routes/notification-preference.routes.js';
 import { authRequestSecurity } from './middleware/auth-security.middleware.js';
 import { ApiError } from './errors/api-error.js';
 import docsRoutes from './routes/docs.routes.js';
@@ -25,6 +29,10 @@ app.use(express.json({ limit: '100kb' }));
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/health-profile', healthProfileRoutes);
+app.use('/api/health-events', healthEventRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/check-ins', checkInRoutes);
+app.use('/api/notification-preferences', notificationPreferenceRoutes);
 app.use('/api-docs', docsRoutes);
 
 app.use((_req, res) => {
