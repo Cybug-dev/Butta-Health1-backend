@@ -1,8 +1,10 @@
 # Butta Health backend
 
 A TypeScript + Node.js ESM Express API with native email/password authentication,
-a private health profile, and a public liveness check. Google OAuth and health
-event history are not implemented.
+a private health profile, authenticated health-event history, dashboard
+aggregates, deterministic daily check-ins, notification preferences, and a
+public liveness check. Google OAuth, notification delivery, and AI-assisted
+extraction are not implemented.
 
 ## Prerequisites
 
@@ -84,9 +86,11 @@ Unknown routes return 404; error responses never include raw exceptions or input
 CORS allows the configured client origin with credentials enabled.
 The health endpoint does not query the database.
 
-`npm test` runs bootstrap, auth, and health-profile integration checks.
+`npm test` runs bootstrap, auth, health-profile, and health-event checks.
 `npm run test:bootstrap` runs the database-free checks alone. `npm run test:auth`
-and `npm run test:profile` run their respective integration suites.
+and `npm run test:profile` run their respective integration suites;
+`npm run test:events` runs health-event schema and API checks, and
+`npm run test:milestone-two` covers dashboard, check-in, preference, and timezone behavior.
 Set `TEST_DATABASE_URL` in ignored `.env` to a separate disposable Neon branch;
 `auth-foundation-test` was created for this purpose. The integration suite rejects
 the application database, applies Prisma migrations to the test database, and
@@ -149,12 +153,56 @@ authenticated request. Browser requests must use `credentials: 'include'`.
 rejected, and duplicates are removed while preserving order. Responses use
 `{ "success": true, "data": { "profile": ... } }` and `Cache-Control: no-store`.
 
+## Health events
+
+All health-event routes require the JWT cookie and derive ownership only from the
+authenticated request. Browser writes require the configured origin. Create and
+update requests require JSON and reject unknown fields such as `userId` and `id`.
+
+- `GET /api/health-events`: list owned events with optional `type`, `severity`,
+  `status`, `from`, `to`, `search`, `limit`, and `cursor` filters.
+- `POST /api/health-events`: create an owned event.
+- `GET /api/health-events/:id`: fetch one owned event.
+- `PATCH /api/health-events/:id`: update one or more allowed fields.
+- `DELETE /api/health-events/:id`: delete one owned event.
+
+Lists are ordered by occurrence time and ID, newest first, and return `nextCursor`
+for keyset pagination. Single-event responses use
+`{ "success": true, "data": { "healthEvent": ... } }`. Events expose no owner ID.
+The API accepts frontend-facing severity, source, and status labels and stores
+them as database enums. Event responses use `Cache-Control: no-store`.
+
+## Dashboard and daily check-ins
+
+- `GET /api/dashboard?timezone=Africa%2FLagos` returns profile completion,
+  total and monthly event counts, watch and symptom counts, the newest four
+  events, and a seven-local-day activity series.
+- `GET /api/check-ins/today?timezone=Africa%2FLagos` idempotently returns one
+  deterministic prompt for the authenticated user's local calendar date.
+- `POST /api/check-ins/:id/respond` atomically claims an unanswered check-in,
+  creates one confirmed `CHECK_IN` event, and links the two records.
+- `GET /api/check-ins/history` returns up to 90 owned check-ins, newest first.
+
+Prompt selection is deterministic and based only on whether the user has no
+entries, a recent medication entry, a recent symptom entry, or older history.
+It does not diagnose, rank urgency, or call an external model. Timezone query
+values must be valid IANA names. Duplicate daily prompts and repeated responses
+are prevented by database constraints and transactional updates.
+
+## Notification preferences
+
+`GET` and `PUT /api/notification-preferences` manage one owner-scoped preference
+record containing event reminders, weekly summary, daily check-in, local check-in
+time, and IANA timezone. Defaults are created atomically with new accounts and
+backfilled by the migration for existing accounts. These settings represent user
+intent only; email, push, and scheduled notification delivery are a later concern.
+
 ## Prisma and layout
 
 - `src/app.ts`: middleware, routes, 404 and final error handling.
 - `src/server.ts`: validated startup and bounded graceful shutdown.
 - `src/routes/health.routes.ts`: liveness endpoint.
-- `prisma/schema.prisma`: User/AuthAccount/HealthProfile models and ESM client generator.
+- `prisma/schema.prisma`: User/AuthAccount/HealthProfile/HealthEvent models and ESM client generator.
 - `prisma.config.ts`: Prisma 7 configuration, using the central environment module.
 - `src/scripts/check-db.ts`: separate Prisma connectivity verification.
 - `test/bootstrap.test.ts`: HTTP and startup verification.
@@ -162,6 +210,10 @@ rejected, and duplicates are removed while preserving order. Responses use
   token/cookie/password handling, typed authentication, validation and auth operations.
 - `test/auth.test.ts`: integration and security checks on the isolated database.
 - `test/health-profile.test.ts`: profile validation, ownership, upsert, and privacy checks.
+- `test/health-event-schema.test.ts`: database-free event input and filter validation.
+- `test/health-event.test.ts`: authenticated CRUD, filtering, pagination, ownership, and privacy checks.
+- `test/milestone-two-schema.test.ts`: deterministic timezone boundaries and request validation.
+- `test/milestone-two.test.ts`: dashboard aggregation, daily check-ins, atomic responses, and preference isolation.
 
 Prisma CLI and Client are pinned to matching stable versions. The current
 `prisma-client` generator uses `moduleFormat = "esm"` and writes TypeScript to

@@ -14,15 +14,103 @@ enum AuthProvider {
   GOOGLE
 }
 
+enum HealthEventType {
+  SYMPTOM
+  MEDICATION
+  DIGESTIVE
+  DOCTOR_VISIT
+  CHECK_IN
+}
+
+enum CheckInPromptType {
+  FIRST_ENTRY
+  DAILY_REFLECTION
+  SYMPTOM_FOLLOW_UP
+  MEDICATION_FOLLOW_UP
+}
+
+enum HealthEventSeverity {
+  MILD
+  MODERATE
+  SEVERE
+  NOT_SPECIFIED
+}
+
+enum HealthEventSource {
+  TYPED
+  VOICE
+  PRESET
+}
+
+enum HealthEventStatus {
+  CONFIRMED
+  NEEDS_MONITORING
+  PREPARED
+}
+
 model User {
-  id           String        @id @default(uuid()) @db.Uuid
-  email        String        @unique @db.VarChar(254)
-  firstName    String        @db.VarChar(100)
-  lastName     String        @db.VarChar(100)
-  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime      @updatedAt @db.Timestamptz(3)
-  authAccounts AuthAccount[]
+  id            String        @id @default(uuid()) @db.Uuid
+  email         String        @unique @db.VarChar(254)
+  firstName     String        @db.VarChar(100)
+  lastName      String        @db.VarChar(100)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+  authAccounts  AuthAccount[]
   healthProfile HealthProfile?
+  healthEvents  HealthEvent[]
+  checkIns      CheckIn[]
+  notificationPreference NotificationPreference?
+}
+
+model HealthEvent {
+  id         String              @id @default(uuid()) @db.Uuid
+  userId     String              @db.Uuid
+  type       HealthEventType
+  title      String              @db.VarChar(160)
+  occurredAt DateTime            @db.Timestamptz(3)
+  severity   HealthEventSeverity @default(NOT_SPECIFIED)
+  symptoms   String[]            @default([])
+  treatment  String              @default("") @db.VarChar(2000)
+  notes      String              @db.VarChar(5000)
+  source     HealthEventSource
+  status     HealthEventStatus   @default(CONFIRMED)
+  createdAt  DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime            @updatedAt @db.Timestamptz(3)
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkIn    CheckIn?
+
+  @@index([userId, occurredAt(sort: Desc), id])
+  @@index([userId, type, occurredAt(sort: Desc)])
+}
+
+model CheckIn {
+  id            String            @id @default(uuid()) @db.Uuid
+  userId        String            @db.Uuid
+  promptType    CheckInPromptType
+  promptText    String            @db.VarChar(500)
+  scheduledFor  DateTime          @db.Date
+  respondedAt   DateTime?         @db.Timestamptz(3)
+  healthEventId String?           @unique @db.Uuid
+  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @db.Timestamptz(3)
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  healthEvent   HealthEvent?      @relation(fields: [healthEventId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, scheduledFor])
+  @@index([userId, scheduledFor(sort: Desc)])
+}
+
+model NotificationPreference {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @db.Uuid
+  eventReminders Boolean  @default(true)
+  weeklySummary  Boolean  @default(true)
+  dailyCheckIn   Boolean  @default(true)
+  checkInTime    String   @default("09:00") @db.VarChar(5)
+  timezone       String   @default("UTC") @db.VarChar(100)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model HealthProfile {
