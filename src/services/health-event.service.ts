@@ -1,6 +1,7 @@
 import { Prisma } from '../generated/prisma/client.js';
 import { prisma } from '../config/database.js';
 import { ApiError } from '../errors/api-error.js';
+import { deleteAttachmentFiles } from './attachment-file-cleanup.service.js';
 import type {
   CreateHealthEventInput,
   HealthEventQuery,
@@ -174,16 +175,22 @@ export async function updateHealthEvent(userId: string, eventId: string, input: 
 }
 
 export async function deleteHealthEvent(userId: string, eventId: string) {
-  await prisma.$transaction(async (transaction) => {
+  const storageKeys = await prisma.$transaction(async (transaction) => {
     const owned = await transaction.healthEvent.findFirst({
       where: { id: eventId, userId },
       select: { id: true },
     });
     if (!owned) throw new ApiError(404, 'HEALTH_EVENT_NOT_FOUND', 'Health event not found.');
+    const attachments = await transaction.healthEventAttachment.findMany({
+      where: { healthEventId: eventId },
+      select: { storageKey: true },
+    });
     await transaction.checkIn.updateMany({
       where: { userId, healthEventId: eventId },
       data: { healthEventId: null, respondedAt: null },
     });
     await transaction.healthEvent.delete({ where: { id: eventId } });
+    return attachments.map((attachment) => attachment.storageKey);
   });
+  await deleteAttachmentFiles(storageKeys);
 }

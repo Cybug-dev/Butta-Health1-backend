@@ -48,6 +48,17 @@ enum HealthEventStatus {
   PREPARED
 }
 
+enum AiExtractionStatus {
+  DRAFTED
+  FAILED
+  REFUSED
+}
+
+enum AttachmentStatus {
+  PENDING
+  ATTACHED
+}
+
 model User {
   id            String        @id @default(uuid()) @db.Uuid
   email         String        @unique @db.VarChar(254)
@@ -60,6 +71,9 @@ model User {
   healthEvents  HealthEvent[]
   checkIns      CheckIn[]
   notificationPreference NotificationPreference?
+  aiConsent     AiConsent?
+  aiExtractions AiExtraction[]
+  healthEventAttachments HealthEventAttachment[]
 }
 
 model HealthEvent {
@@ -78,9 +92,27 @@ model HealthEvent {
   updatedAt  DateTime            @updatedAt @db.Timestamptz(3)
   user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   checkIn    CheckIn?
+  attachments HealthEventAttachment[]
 
   @@index([userId, occurredAt(sort: Desc), id])
   @@index([userId, type, occurredAt(sort: Desc)])
+}
+
+model HealthEventAttachment {
+  id            String           @id @default(uuid()) @db.Uuid
+  userId        String           @db.Uuid
+  healthEventId String?          @db.Uuid
+  status        AttachmentStatus @default(PENDING)
+  storageKey    String           @db.VarChar(255)
+  originalName  String           @db.VarChar(255)
+  mimeType      String           @db.VarChar(100)
+  sizeBytes     Int
+  createdAt     DateTime         @default(now()) @db.Timestamptz(3)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  healthEvent   HealthEvent?     @relation(fields: [healthEventId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([healthEventId])
 }
 
 model CheckIn {
@@ -141,4 +173,32 @@ model AuthAccount {
 
   @@unique([userId, provider])
   @@unique([provider, providerAccountId])
+}
+
+model AiConsent {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @db.Uuid
+  granted     Boolean  @default(false)
+  policyVersion String @db.VarChar(30)
+  grantedAt   DateTime? @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AiExtraction {
+  id              String              @id @default(uuid()) @db.Uuid
+  userId          String              @db.Uuid
+  healthEventId   String?             @db.Uuid
+  provider        String              @db.VarChar(50)
+  model           String              @db.VarChar(100)
+  promptVersion   String              @db.VarChar(30)
+  status          AiExtractionStatus
+  inputPreview    String              @db.VarChar(200)
+  urgentFlag      Boolean             @default(false)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
 }

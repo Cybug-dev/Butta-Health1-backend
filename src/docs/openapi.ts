@@ -39,7 +39,7 @@ const credentials = (register: boolean) => ({ type: 'object', additionalProperti
   properties: {
     ...(register ? { firstName: text(100), lastName: text(100) } : {}),
     email: { type: 'string', format: 'email', maxLength: 254, description: 'Trimmed and lowercased.' },
-    password: { type: 'string', format: 'password', minLength: register ? 15 : 1, maxLength: 128, writeOnly: true },
+    password: { type: 'string', format: 'password', minLength: register ? 8 : 1, maxLength: 128, writeOnly: true },
   },
 });
 
@@ -47,7 +47,7 @@ export const openapi = {
   openapi: '3.0.3',
   info: { title: 'Butta Health API', version: '0.3.0', description: 'Native authentication, private health profiles, user-owned health events, dashboard aggregates, daily check-ins, and notification preferences. All responses use success/data or success/error envelopes. This documentation is read-only: download the OpenAPI JSON for Postman. Login/register set an HTTP-only cookie; retain it for protected requests. Never paste tokens into Swagger or store them in localStorage. Browser writes require the configured CLIENT_URL origin; existing CSRF restrictions remain in force.' },
   servers: [{ url: '/', description: 'Current API host' }],
-  tags: [{ name: 'Health' }, { name: 'Authentication' }, { name: 'Health profile' }, { name: 'Health events' }, { name: 'Dashboard' }, { name: 'Check-ins' }, { name: 'Preferences' }],
+  tags: [{ name: 'Health' }, { name: 'Authentication' }, { name: 'Health profile' }, { name: 'Health events' }, { name: 'Dashboard' }, { name: 'Check-ins' }, { name: 'Preferences' }, { name: 'AI capture' }, { name: 'Attachments' }],
   paths: {
     '/api/health': { get: { tags: ['Health'], summary: 'Check API availability', responses: { '200': response('API is running; this does not check database connectivity.', envelope({ status: { type: 'string', enum: ['ok'] } })) } } },
     '/api/auth/register': { post: { tags: ['Authentication'], summary: 'Register a local account', description: 'Creates User and LOCAL account atomically. Five attempts per IP per 15 minutes. Returns a session cookie only after creation.', requestBody: { required: true, content: json(ref('RegisterInput')) }, responses: { '201': response('Account created; Set-Cookie establishes authentication.', ref('UserResponse')), ...writeErrors, '409': failure('Registration conflict.'), '429': failure('Too many attempts; observe Retry-After.') } } },
@@ -96,6 +96,38 @@ export const openapi = {
         responses: { '200': response('Health event deleted.', envelope({ message: { type: 'string', example: 'Health event deleted.' } })), '400': failure('Health event ID is invalid.'), '401': failure('Authentication required.'), '403': failure('Origin is not allowed.'), '404': failure('Health event was not found for this user.'), '500': failure('Unexpected server error.') },
       },
     },
+    '/api/health-events/{id}/attachments': {
+      post: {
+        tags: ['Health events'], summary: 'Attach uploaded images to a health event', security: secured, parameters: [eventIdParameter],
+        description: 'Links previously uploaded, still-pending attachments (see POST /api/attachments) to an owned health event. Attachments must belong to the authenticated user and not already be attached elsewhere.',
+        requestBody: { required: true, content: json(ref('AttachHealthEventInput')) },
+        responses: { ...writeErrors, '200': response('Attachments linked.', ref('AttachmentListResponse')), '400': failure('One or more attachments were not found or already attached.'), '401': failure('Authentication required.'), '404': failure('Health event was not found for this user.') },
+      },
+    },
+    '/api/attachments': {
+      post: {
+        tags: ['Attachments'], summary: 'Upload one or more images', security: secured,
+        description: 'Accepts multipart/form-data with a "files" field (up to 6 images, 8 MB each; JPEG, PNG, WEBP, or HEIC). Returns pending attachments not yet linked to a health event. 30 uploads per 15 minutes per IP.',
+        requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string', format: 'binary' } } } } } } },
+        responses: {
+          '201': response('Uploaded, pending attachments.', ref('AttachmentListResponse')),
+          '400': failure('No files were provided.'),
+          '401': failure('Authentication required.'),
+          '403': failure('Origin is not allowed.'),
+          '413': failure('A file exceeds 8 MB, or too many files were sent.'),
+          '415': failure('An uploaded file is not an accepted image type.'),
+          '429': failure('Too many upload requests; observe Retry-After.'),
+          '500': failure('Unexpected server error.'),
+        },
+      },
+    },
+    '/api/attachments/{id}/file': {
+      get: {
+        tags: ['Attachments'], summary: 'Download an owned attachment', security: secured,
+        parameters: [{ name: 'id', in: 'path', required: true, description: 'Attachment UUID.', schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { description: 'The raw image file.', content: { 'image/jpeg': {}, 'image/png': {}, 'image/webp': {}, 'image/heic': {} } }, '400': failure('Attachment ID is invalid.'), '401': failure('Authentication required.'), '404': failure('Attachment was not found for this user.'), '500': failure('Unexpected server error.') },
+      },
+    },
     '/api/dashboard': {
       get: {
         tags: ['Dashboard'], summary: 'Get your dashboard snapshot', security: secured,
@@ -137,6 +169,36 @@ export const openapi = {
         tags: ['Preferences'], summary: 'Replace notification preferences', security: secured,
         requestBody: { required: true, content: json(ref('NotificationPreferenceInput')) },
         responses: { '200': response('Preferences saved.', ref('NotificationPreferenceResponse')), '401': failure('Authentication required.'), ...writeErrors },
+      },
+    },
+    '/api/ai-consent': {
+      get: {
+        tags: ['AI capture'], summary: 'Get your AI-processing consent', security: secured,
+        description: 'Consent defaults to not granted. Required before /api/health-events/extract will run.',
+        responses: { '200': response('Current consent state.', ref('AiConsentResponse')), '401': failure('Authentication required.'), '500': failure('Unexpected server error.') },
+      },
+      put: {
+        tags: ['AI capture'], summary: 'Grant or revoke AI-processing consent', security: secured,
+        requestBody: { required: true, content: json(ref('AiConsentInput')) },
+        responses: { '200': response('Consent updated.', ref('AiConsentResponse')), '401': failure('Authentication required.'), ...writeErrors },
+      },
+    },
+    '/api/health-events/extract': {
+      post: {
+        tags: ['AI capture'], summary: 'Extract a structured draft from a plain-language observation', security: secured,
+        description: 'Sends the observation to the configured local model and returns an editable, non-diagnostic draft. Never saves a HealthEvent; only POST /api/health-events persists a confirmed draft. Requires prior AI consent. Curated urgent-symptom phrases are detected independent of model output and force Severe severity plus a safety advisory. 20 requests per 15 minutes per IP.',
+        requestBody: { required: true, content: json(ref('AiExtractionInput')) },
+        responses: {
+          ...writeErrors,
+          '200': response('Structured draft and safety metadata.', ref('AiExtractionResponse')),
+          '401': failure('Authentication required.'),
+          '403': failure('Origin is not allowed, or AI_CONSENT_REQUIRED: grant consent with PUT /api/ai-consent first.'),
+          '422': failure('AI_EXTRACTION_REFUSED: the model declined to extract this text.'),
+          '429': failure('Too many extraction requests; observe Retry-After.'),
+          '502': failure('AI_PROVIDER_MALFORMED_OUTPUT: the provider response did not match the schema.'),
+          '503': failure('AI_PROVIDER_UNAVAILABLE: the local model is not reachable.'),
+          '504': failure('AI_PROVIDER_TIMEOUT: the provider did not respond in time.'),
+        },
       },
     },
   },
@@ -225,6 +287,63 @@ export const openapi = {
           },
         },
       }),
+      AiConsentInput: { type: 'object', additionalProperties: false, required: ['granted'], properties: { granted: { type: 'boolean' } } },
+      AiConsentResponse: envelope({
+        consent: {
+          type: 'object', additionalProperties: false,
+          required: ['granted', 'policyVersion', 'grantedAt', 'revokedAt', 'updatedAt'],
+          properties: {
+            granted: { type: 'boolean' }, policyVersion: { type: 'string' },
+            grantedAt: { type: 'string', format: 'date-time', nullable: true },
+            revokedAt: { type: 'string', format: 'date-time', nullable: true },
+            updatedAt: { type: 'string', format: 'date-time', nullable: true },
+          },
+        },
+      }),
+      AiExtractionInput: {
+        type: 'object', additionalProperties: false, required: ['observation', 'source'],
+        properties: {
+          observation: text(2000), source: healthEventProperties.source,
+          symptomTags: { type: 'array', maxItems: 12, items: text(60), default: [], description: 'Structured symptom tags selected from quick-add presets. Always merged into the draft\'s symptoms array, independent of model output.' },
+        },
+      },
+      AiExtractionResponse: envelope({
+        draft: {
+          type: 'object', additionalProperties: false,
+          required: ['type', 'title', 'eventDate', 'severity', 'symptoms', 'treatment', 'notes', 'source'],
+          properties: { ...healthEventProperties, type: writableHealthEventType },
+          description: 'Editable draft only. Confirm with POST /api/health-events to persist it.',
+        },
+        educationalContext: {
+          type: 'array', maxItems: 4, items: text(280),
+          description: 'General, non-diagnostic patient-education bullets about the symptom category. Never about this specific patient, never a diagnosis or treatment recommendation, and always empty when safety.urgent is true.',
+        },
+        safety: {
+          type: 'object', additionalProperties: false, required: ['urgent', 'advisory'],
+          properties: {
+            urgent: { type: 'boolean', description: 'Set by curated server-side rules, independent of model output.' },
+            advisory: { type: 'string', nullable: true },
+          },
+        },
+      }),
+      AttachHealthEventInput: {
+        type: 'object', additionalProperties: false, required: ['attachmentIds'],
+        properties: { attachmentIds: { type: 'array', minItems: 1, maxItems: 6, items: { type: 'string', format: 'uuid' } } },
+      },
+      Attachment: {
+        type: 'object', additionalProperties: false,
+        required: ['id', 'status', 'originalName', 'mimeType', 'sizeBytes', 'createdAt', 'url'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          status: { type: 'string', enum: ['PENDING', 'ATTACHED'] },
+          originalName: text(255),
+          mimeType: { type: 'string', enum: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'] },
+          sizeBytes: { type: 'integer', minimum: 0 },
+          createdAt: { type: 'string', format: 'date-time' },
+          url: { type: 'string', format: 'uri', description: 'Authenticated download URL; requires the session cookie.' },
+        },
+      },
+      AttachmentListResponse: envelope({ attachments: { type: 'array', maxItems: 6, items: ref('Attachment') } }),
     },
   },
 };

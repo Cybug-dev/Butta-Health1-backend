@@ -7,7 +7,7 @@ export const registerSchema = z.strictObject({
   firstName: name,
   lastName: name,
   email,
-  password: z.string().min(15).max(128),
+  password: z.string().min(8).max(128),
 });
 
 export const loginSchema = z.strictObject({

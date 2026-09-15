@@ -8,7 +8,7 @@ import { AuthError, unauthorized } from '../auth/errors.js';
 export const register: RequestHandler = async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new AuthError(400, 'VALIDATION_ERROR', 'Provide valid names, email, and a password of 15 to 128 characters.');
+    throw new AuthError(400, 'VALIDATION_ERROR', 'Provide valid names, email, and a password of 8 to 128 characters.');
   }
   const user = await registerUser(parsed.data);
   setAuthCookie(res, await createAuthToken(user.id));
