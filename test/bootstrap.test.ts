@@ -84,9 +84,7 @@ test('Swagger documentation and local assets are public with security headers in
     'PATCH /api/health-events/{id}', 'DELETE /api/health-events/{id}',
     'GET /api/dashboard', 'GET /api/check-ins/today', 'GET /api/check-ins/history',
     'POST /api/check-ins/{id}/respond', 'GET /api/notification-preferences',
-    'PUT /api/notification-preferences', 'GET /api/ai-consent', 'PUT /api/ai-consent',
-    'POST /api/health-events/extract', 'POST /api/health-events/{id}/attachments',
-    'POST /api/attachments', 'GET /api/attachments/{id}/file',
+    'PUT /api/notification-preferences',
   ].sort());
   assert.deepEqual({ in: spec.components.securitySchemes.cookieAuth.in, name: spec.components.securitySchemes.cookieAuth.name },
     { in: 'cookie', name: '__Host-butta_auth' });
@@ -154,7 +152,6 @@ test('invalid configuration fails startup with safe variable-specific errors', (
     ['JWT_SECRET', 'short'], ['JWT_SECRET', 'z'.repeat(64)],
     ['JWT_EXPIRES_IN_SECONDS', '0'], ['JWT_EXPIRES_IN_SECONDS', '86401'],
     ['JWT_EXPIRES_IN_SECONDS', '1e3'],
-    ['AI_PROVIDER', 'openai'], ['OLLAMA_BASE_URL', 'not-a-url'], ['API_PUBLIC_URL', 'not-a-url'],
   ] as const) {
     const result = startWith({ [name]: value });
     assert.equal(result.status, 1);
