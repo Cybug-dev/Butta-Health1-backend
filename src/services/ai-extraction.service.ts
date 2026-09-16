@@ -91,12 +91,18 @@ export async function extractHealthEvent(
     await recordExtraction({ userId, status: 'FAILED', observation: input.observation, urgentFlag });
 
     if (error instanceof ProviderTimeoutError) {
+      console.error(`AI extraction timed out (${env.AI_PROVIDER}): ${error.message}`);
       throw new ApiError(504, 'AI_PROVIDER_TIMEOUT', 'The AI provider did not respond in time.');
     }
     if (error instanceof ProviderUnavailableError) {
+      // The client only ever sees a generic 503; the underlying cause (rate limit,
+      // malformed retry, network failure, etc.) is only visible in server logs so it
+      // can be diagnosed without leaking upstream provider details to the caller.
+      console.error(`AI provider unavailable (${env.AI_PROVIDER}): ${error.message}`);
       throw new ApiError(503, 'AI_PROVIDER_UNAVAILABLE', 'The AI provider is not available right now.');
     }
     if (error instanceof ProviderMalformedOutputError) {
+      console.error(`AI provider returned malformed output (${env.AI_PROVIDER}): ${error.message}`);
       throw new ApiError(502, 'AI_PROVIDER_MALFORMED_OUTPUT', 'The AI provider returned an unusable response.');
     }
     throw error;

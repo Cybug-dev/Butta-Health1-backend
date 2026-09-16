@@ -177,12 +177,17 @@ export class OpenRouterProvider implements HealthAiProvider {
       if (!(error instanceof TransientOpenRouterError) && !(error instanceof RateLimitedError)) {
         throw error;
       }
+      const firstAttemptMessage = error.message;
       if (error instanceof RateLimitedError) await delay(3_000);
       try {
         return await attemptExtraction(input);
       } catch (retryError) {
         if (retryError instanceof TransientOpenRouterError || retryError instanceof RateLimitedError) {
-          throw new ProviderUnavailableError(retryError.message);
+          // Both attempts' reasons are kept, not just the retry's: they can differ
+          // (e.g. rate-limited then malformed output), and only server logs ever see this.
+          throw new ProviderUnavailableError(
+            `first attempt: ${firstAttemptMessage}; retry: ${retryError.message}`,
+          );
         }
         throw retryError;
       }
