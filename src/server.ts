@@ -5,6 +5,10 @@ async function start() {
   const { prisma } = await import('./config/database.js');
   const server = app.listen(env.PORT, () => {
     console.log(`Butta Health API listening on port ${env.PORT}.`);
+    // Logs only the provider name (never keys/URLs) so a misconfigured or
+    // not-yet-deployed AI_PROVIDER value is visible in startup logs instead
+    // of only surfacing later as an opaque AI_PROVIDER_UNAVAILABLE response.
+    console.log(`NODE_ENV=${env.NODE_ENV}, AI_PROVIDER=${env.AI_PROVIDER}.`);
   });
 
   server.on('error', (error: NodeJS.ErrnoException) => {
