@@ -19,6 +19,13 @@ import docsRoutes from './routes/docs.routes.js';
 
 const app = express();
 
+// Render (and most PaaS hosts) sit behind a single reverse proxy that sets
+// X-Forwarded-For. Trusting exactly one hop lets express-rate-limit and req.ip
+// see the real client IP without blindly trusting a client-forged header.
+if (env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors({
