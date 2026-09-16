@@ -1,13 +1,26 @@
 import { defineConfig } from 'prisma/config';
-import env from './src/config/env.js';
+import dotenv from 'dotenv';
+
+dotenv.config({ quiet: true });
+
+// `prisma generate` needs no database at all, and every Prisma CLI command only needs
+// DATABASE_URL — never the full application config (JWT_SECRET, CLIENT_URL, AI provider
+// settings, etc.). Importing src/config/env.js here previously forced every Prisma CLI
+// invocation, including `generate`, to pass the app's complete env validation, which
+// broke `npm run prisma:generate` during deploy builds where only DATABASE_URL is needed.
+const databaseUrl = process.env.DATABASE_URL;
 
 // Prisma CLI migrations use Neon's direct endpoint; application queries keep pooling.
-const migrationUrl = new URL(env.DATABASE_URL);
-if (migrationUrl.hostname.endsWith('.neon.tech')) {
-  migrationUrl.hostname = migrationUrl.hostname.replace('-pooler', '');
+let migrationUrl = databaseUrl;
+if (databaseUrl) {
+  const parsed = new URL(databaseUrl);
+  if (parsed.hostname.endsWith('.neon.tech')) {
+    parsed.hostname = parsed.hostname.replace('-pooler', '');
+  }
+  migrationUrl = parsed.toString();
 }
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
-  datasource: { url: migrationUrl.toString() },
+  ...(migrationUrl ? { datasource: { url: migrationUrl } } : {}),
 });

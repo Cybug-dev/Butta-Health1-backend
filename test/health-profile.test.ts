@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import fs from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import type { Server } from 'node:http';
 import { before, after, test } from 'node:test';
 import { parse } from 'dotenv';
@@ -90,10 +89,6 @@ const completeProfile = {
 };
 
 before(async () => {
-  const migration = spawnSync(process.execPath, ['node_modules/prisma/build/index.js', 'migrate', 'deploy'], {
-    env: process.env, encoding: 'utf8', windowsHide: true, timeout: 60_000,
-  });
-  assert.equal(migration.status, 0, 'Could not apply migrations to the isolated test database.');
   await prisma.$connect();
   server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');

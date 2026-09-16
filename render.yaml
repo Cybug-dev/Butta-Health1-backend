@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: butta-health-backend
+    runtime: node
+    buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
+    preDeployCommand: npm run prisma:migrate
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render provides PORT automatically; do not hardcode it here.
+      - key: DATABASE_URL
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      # Must be a fresh 32-byte value encoded as exactly 64 hexadecimal characters.
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN_SECONDS
+        value: "3600"
+      - key: AI_PROVIDER
+        value: openrouter
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: liquid/lfm-2.5-2.6b:free
+      - key: API_PUBLIC_URL
+        sync: false

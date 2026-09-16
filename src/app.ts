@@ -1,6 +1,7 @@
 import express, { type ErrorRequestHandler } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import { MulterError } from 'multer';
 import env from './config/env.js';
 import healthRoutes from './routes/health.routes.js';
 import authRoutes from './routes/auth.routes.js';
@@ -9,6 +10,9 @@ import healthEventRoutes from './routes/health-event.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 import checkInRoutes from './routes/check-in.routes.js';
 import notificationPreferenceRoutes from './routes/notification-preference.routes.js';
+import aiExtractionRoutes from './routes/ai-extraction.routes.js';
+import aiConsentRoutes from './routes/ai-consent.routes.js';
+import attachmentRoutes from './routes/attachment.routes.js';
 import { authRequestSecurity } from './middleware/auth-security.middleware.js';
 import { ApiError } from './errors/api-error.js';
 import docsRoutes from './routes/docs.routes.js';
@@ -29,10 +33,13 @@ app.use(express.json({ limit: '100kb' }));
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/health-profile', healthProfileRoutes);
+app.use('/api/health-events/extract', aiExtractionRoutes);
 app.use('/api/health-events', healthEventRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/check-ins', checkInRoutes);
 app.use('/api/notification-preferences', notificationPreferenceRoutes);
+app.use('/api/ai-consent', aiConsentRoutes);
+app.use('/api/attachments', attachmentRoutes);
 app.use('/api-docs', docsRoutes);
 
 app.use((_req, res) => {
@@ -56,6 +63,14 @@ const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, next) => {
     status = error.status;
     code = error.code;
     message = error.message;
+  } else if (error instanceof MulterError) {
+    status = error.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    code = `UPLOAD_${error.code}`;
+    message = error.code === 'LIMIT_FILE_SIZE'
+      ? 'Each image must be 8 MB or smaller.'
+      : error.code === 'LIMIT_FILE_COUNT'
+        ? 'You can attach up to 6 images at a time.'
+        : 'The uploaded file could not be processed.';
   } else if (errorType === 'entity.parse.failed') {
     status = 400;
     code = 'INVALID_JSON';

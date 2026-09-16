@@ -6,6 +6,7 @@ import {
   listOwnHealthEvents,
   updateOwnHealthEvent,
 } from '../controllers/health-event.controller.js';
+import { attachOwnAttachmentsToHealthEvent } from '../controllers/attachment.controller.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import {
   preventSensitiveResponseCaching,
@@ -21,5 +22,6 @@ router.post('/', requireTrustedJsonWrite, createOwnHealthEvent);
 router.get('/:id', getOwnHealthEvent);
 router.patch('/:id', requireTrustedJsonWrite, updateOwnHealthEvent);
 router.delete('/:id', requireTrustedOrigin, deleteOwnHealthEvent);
+router.post('/:id/attachments', requireTrustedJsonWrite, attachOwnAttachmentsToHealthEvent);
 
 export default router;
