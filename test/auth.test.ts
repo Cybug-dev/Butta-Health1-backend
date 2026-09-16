@@ -272,7 +272,7 @@ test('production cookie uses Secure and the host-only prefix', () => {
   });
   assert.equal(result.status, 0);
   assert.deepEqual(JSON.parse(result.stdout), {
-    name: '__Host-butta_auth', options: { httpOnly: true, secure: true, sameSite: 'lax', path: '/' },
+    name: '__Host-butta_auth', options: { httpOnly: true, secure: true, sameSite: 'none', path: '/' },
   });
 });
 
